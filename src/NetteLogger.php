@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Residit\NetteLogger;
 
+use Cassandra\Date;
 use Nette\Http\Session;
 use Nette\Security\IIdentity;
 use Nette\Security\User;
+use Nette\Utils\DateTime;
+use Nette\Utils\Json;
+use Nette\Utils\Random;
 use Sentry\ClientBuilder;
 use Sentry\Integration\RequestIntegration;
 use Sentry\Severity;
@@ -75,68 +79,80 @@ class NetteLogger extends Logger
     public function log($value, $priority = ILogger::INFO)
     {
         $response = parent::log($value, $priority);
-        $severity = $this->tracyPriorityToSentrySeverity($priority);
+        $severity = $this->priorityToSeverity($priority);
 
-        // if it's non-default severity, let's try configurable mapping
+        // Configurable error mapping
         if (!$severity) {
             $mappedSeverity = $this->priorityMapping[$priority] ?? null;
             if ($mappedSeverity) {
-                $severity = new Severity((string) $mappedSeverity);
+                $severity = (string) $mappedSeverity;
             }
         }
-        // if we still don't have severity, don't log anything
+
+        // We do not have severity - do not log anything
         if (!$severity) {
             return $response;
         }
 
-        configureScope(function (\Sentry\State\Scope $scope) use ($severity) {
-            if (!$severity) {
-                return;
+        if ($this->identity) {
+            $userFields = [
+                'id' => $this->identity->getId(),
+            ];
+            foreach ($this->userFields as $name) {
+                $userFields[$name] = $this->identity->{$name} ?? null;
             }
-            $scope->setLevel($severity);
-            if ($this->identity) {
-                $userFields = [
-                    'id' => $this->identity->getId(),
-                ];
-                foreach ($this->userFields as $name) {
-                    $userFields[$name] = $this->identity->{$name} ?? null;
+        }
+        if ($this->session) {
+            $data = [];
+            foreach ($this->session->getIterator() as $section) {
+                foreach ($this->session->getSection($section)->getIterator() as $key => $val) {
+                    $data[$section][$key] = $val;
                 }
-                $scope->setUser($userFields);
             }
-            if ($this->session) {
-                $data = [];
-                foreach ($this->session->getIterator() as $section) {
-                    foreach ($this->session->getSection($section)->getIterator() as $key => $val) {
-                        $data[$section][$key] = $val;
-                    }
-                }
-                $scope->setExtra('session', $data);
-            }
-        });
+        }
 
+        /*
         if ($value instanceof \Throwable) {
             captureException($value);
         } else {
             captureMessage($value);
         }
+        */
+
+        $date = new DateTime();
+
+        $json = array(
+          'token' => md5(Random::generate(25)),
+          'file' => $value->getFile(),
+          'severity' => $severity,
+          'line' => $value->getLine(),
+          'message' => $value->getMessage(),
+          'trace' => Json::encode($value->getTrace()),
+          'user' => Json::encode($userFields),
+          'session' => Json::encode($data),
+          'html' => file_get_contents($response),
+          'datetime' => $date->format('Y-m-d H:i:s')
+        );
+
+        bdump($json, 'JSON pro API');
 
         return $response;
     }
 
-    private function tracyPriorityToSentrySeverity(string $priority): ?Severity
+    private function priorityToSeverity(string $priority)
     {
         switch ($priority) {
             case ILogger::DEBUG:
-                return Severity::debug();
+                return 'debug';
             case ILogger::INFO:
-                return Severity::info();
+                return 'info';
             case ILogger::WARNING:
-                return Severity::warning();
+                return 'warning';
             case ILogger::ERROR:
             case ILogger::EXCEPTION:
-                return Severity::error();
+                return 'error';
             case ILogger::CRITICAL:
-                return Severity::fatal();
+                'fatal';
             default:
                 return null;
         }
