@@ -4,23 +4,13 @@ declare(strict_types=1);
 
 namespace Residit\NetteLogger;
 
-use Cassandra\Date;
 use Nette\Http\Session;
 use Nette\Security\IIdentity;
 use Nette\Security\User;
-use Nette\Utils\DateTime;
 use Nette\Utils\Json;
-use Nette\Utils\Random;
-use Sentry\ClientBuilder;
-use Sentry\Integration\RequestIntegration;
-use Sentry\Severity;
-use Sentry\State\Hub;
 use Tracy\Debugger;
 use Tracy\ILogger;
 use Tracy\Logger;
-use function Sentry\captureException;
-use function Sentry\captureMessage;
-use function Sentry\configureScope;
 
 class NetteLogger extends Logger
 {
@@ -38,19 +28,7 @@ class NetteLogger extends Logger
 
     public function register(string $dsn, string $environment)
     {
-        $options = new \Sentry\Options([
-            'dsn' => $dsn,
-            'environment' => $environment,
-            'default_integrations' => false,
-        ]);
-
-        $options->setIntegrations([
-            new RequestIntegration($options),
-        ]);
-
-        $builder = new ClientBuilder($options);
-        $client = $builder->getClient();
-        Hub::setCurrent(new Hub($client));
+        // $dns, $environment
 
         $this->email = & Debugger::$email;
         $this->directory = Debugger::$logDirectory;
@@ -80,6 +58,9 @@ class NetteLogger extends Logger
     {
         $response = parent::log($value, $priority);
         $severity = $this->priorityToSeverity($priority);
+
+        $userFields = null;
+        $data = null;
 
         // Configurable error mapping
         if (!$severity) {
@@ -119,22 +100,36 @@ class NetteLogger extends Logger
         }
         */
 
-        $date = new DateTime();
-
         $json = array(
-          'token' => md5(Random::generate(25)),
-          'file' => $value->getFile(),
-          'severity' => $severity,
-          'line' => $value->getLine(),
-          'message' => $value->getMessage(),
+          'title' => $value->getMessage(),
+          'type' => $severity,
+          'url' => $value->getFile(),
           'trace' => Json::encode($value->getTrace()),
-          'user' => Json::encode($userFields),
+          'line' => $value->getLine(),
           'session' => Json::encode($data),
+          'user' => Json::encode($userFields),
           'html' => file_get_contents($response),
-          'datetime' => $date->format('Y-m-d H:i:s')
         );
 
         bdump($json, 'JSON pro API');
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL,"http://log.residit.loc/api/v1/log");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $headers = [
+          'X-Auth-Token: 4b43b0aee35624cd95b910189b3dc231'
+        ];
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $server_output = curl_exec ($ch);
+
+        curl_close ($ch);
+
+        bdump(Json::decode($server_output));
 
         return $response;
     }
