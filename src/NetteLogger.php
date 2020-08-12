@@ -21,16 +21,13 @@ class NetteLogger extends Logger
     private $session;
 
     /** @var array */
-    private $userFields = [];
+    private $userData = [];
 
-    /** @var array */
-    private $priorityMapping = [];
+    /** @var string */
+    private $token = null;
 
-    public function register(string $dsn, string $environment)
+    public function register()
     {
-        // $dns, $environment
-
-        $this->email = & Debugger::$email;
         $this->directory = Debugger::$logDirectory;
     }
 
@@ -39,117 +36,71 @@ class NetteLogger extends Logger
         $this->identity = $user->getIdentity();
     }
 
-    public function setUserFields(array $userFields)
-    {
-        $this->userFields = $userFields;
-    }
-
-    public function setPriorityMapping(array $priorityMapping)
-    {
-        $this->priorityMapping = $priorityMapping;
-    }
-
     public function setSession(Session $session)
     {
-        $this->session = $session;
+      $this->session = $session;
+    }
+
+    public function setUserData(array $userData)
+    {
+        $this->userData = $userData;
+    }
+
+    public function setToken(string $token)
+    {
+        $this->token = $token;
     }
 
     public function log($value, $priority = ILogger::INFO)
     {
         $response = parent::log($value, $priority);
-        $severity = $this->priorityToSeverity($priority);
-
-        $userFields = null;
-        $data = null;
-
-        // Configurable error mapping
-        if (!$severity) {
-            $mappedSeverity = $this->priorityMapping[$priority] ?? null;
-            if ($mappedSeverity) {
-                $severity = (string) $mappedSeverity;
-            }
-        }
-
-        // We do not have severity - do not log anything
-        if (!$severity) {
-            return $response;
-        }
+        $userData = null;
+        $sessionData = null;
 
         if ($this->identity) {
-            $userFields = [
+            $userData = [
                 'id' => $this->identity->getId(),
             ];
-            foreach ($this->userFields as $name) {
-                $userFields[$name] = $this->identity->{$name} ?? null;
+
+            foreach ($this->userData as $name) {
+                $userData[$name] = $this->identity->{$name} ?? null;
             }
         }
+
         if ($this->session) {
-            $data = [];
             foreach ($this->session->getIterator() as $section) {
                 foreach ($this->session->getSection($section)->getIterator() as $key => $val) {
-                    $data[$section][$key] = $val;
+                    $sessionData[$section][$key] = $val;
                 }
             }
         }
 
-        /*
-        if ($value instanceof \Throwable) {
-            captureException($value);
-        } else {
-            captureMessage($value);
-        }
-        */
+        $htmlWithoutScriptTags = preg_replace('#<script(.*?)>(.*?)</script>#is', '', file_get_contents($response));
 
         $json = array(
           'title' => $value->getMessage(),
-          'type' => $severity,
+          'type' => $priority,
           'url' => $value->getFile(),
           'trace' => Json::encode($value->getTrace()),
           'line' => $value->getLine(),
-          'session' => Json::encode($data),
-          'user' => Json::encode($userFields),
-          'html' => file_get_contents($response),
+          'session' => Json::encode($sessionData),
+          'user' => Json::encode($userData),
+          'html' => $htmlWithoutScriptTags,
         );
-
-        bdump($json, 'JSON pro API');
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL,"http://log.residit.loc/api/v1/log");
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Auth-Token: ' . $this->token]);
 
-        $headers = [
-          'X-Auth-Token: 4b43b0aee35624cd95b910189b3dc231'
-        ];
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-        $server_output = curl_exec ($ch);
+        $response = curl_exec ($ch);
 
         curl_close ($ch);
 
-        bdump(Json::decode($server_output));
+        bdump($response);
 
         return $response;
-    }
-
-    private function priorityToSeverity(string $priority)
-    {
-        switch ($priority) {
-            case ILogger::DEBUG:
-                return 'debug';
-            case ILogger::INFO:
-                return 'info';
-            case ILogger::WARNING:
-                return 'warning';
-            case ILogger::ERROR:
-            case ILogger::EXCEPTION:
-                return 'error';
-            case ILogger::CRITICAL:
-                'fatal';
-            default:
-                return null;
-        }
     }
 }
