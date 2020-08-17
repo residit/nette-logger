@@ -59,11 +59,6 @@ class NetteLogger extends Logger
     $this->token = $token;
   }
 
-  public function setUserData(array $userData)
-  {
-    $this->userData = $userData;
-  }
-
   /**
    * Init logging directory
    */
@@ -83,15 +78,11 @@ class NetteLogger extends Logger
   public function log($value, $priority = ILogger::INFO)
   {
     $response = parent::log($value, $priority);
-    $userData = null;
+    $userId = null;
     $sessionData = null;
 
     if ($this->identity) {
-      $userData = ['id' => $this->identity->getId()];
-
-      foreach ($this->userData as $name) {
-        $userData[$name] = $this->identity->{$name} ?? null;
-      }
+      $userId = $this->identity->getId();
     }
 
     if ($this->session) {
@@ -111,7 +102,7 @@ class NetteLogger extends Logger
       'trace' => Json::encode($value->getTrace()),
       'line' => $value->getLine(),
       'session' => Json::encode($sessionData),
-      'user' => Json::encode($userData),
+      'userId' => $userId,
       'html' => $htmlWithoutScriptTags,
     );
 

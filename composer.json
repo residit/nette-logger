@@ -14,6 +14,7 @@
   ],
   "type": "library",
   "require": {
+    "php": "^7.1",
     "tracy/tracy": "~2.4",
     "nette/di": "^2.4 || ^3.0",
     "nette/security": "^2.4 || ^3.0",
