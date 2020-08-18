@@ -94,11 +94,13 @@ class NetteLogger extends Logger
     }
 
     $htmlWithoutScriptTags = preg_replace('#<script(.*?)>(.*?)</script>#is', '', file_get_contents($response));
+    $url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . "{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
 
     $logData = array(
       'title' => $value->getMessage(),
       'type' => $priority,
-      'url' => $value->getFile(),
+      'url' => $url,
+      'file' => $value->getFile(),
       'trace' => Json::encode($value->getTrace()),
       'line' => $value->getLine(),
       'session' => Json::encode($sessionData),
