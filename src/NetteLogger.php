@@ -65,6 +65,7 @@ class NetteLogger extends Logger
   public function register()
   {
     $this->directory = Debugger::$logDirectory;
+    $this->email = & Debugger::$email;
   }
 
   /**
@@ -93,20 +94,29 @@ class NetteLogger extends Logger
       }
     }
 
-    $htmlWithoutScriptTags = preg_replace('#<script(.*?)>(.*?)</script>#is', '', file_get_contents($response));
     $url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . "{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
 
     $logData = array(
-      'title' => $value->getMessage(),
+      'title' => null,
       'type' => $priority,
       'url' => $url,
-      'file' => $value->getFile(),
-      'trace' => Json::encode($value->getTrace()),
-      'line' => $value->getLine(),
+      'file' => null,
+      'trace' => null,
+      'line' => null,
       'session' => Json::encode($sessionData),
       'userId' => $userId,
-      'html' => $htmlWithoutScriptTags,
+      'html' => null,
     );
+
+    if ($value instanceof \Throwable) {
+      $logData['title'] = $value->getMessage();
+      $logData['file'] = $value->getFile();
+      $logData['trace'] = Json::encode($value->getTrace());
+      $logData['line'] = $value->getLine();
+      $logData['html'] = file_get_contents($response);
+    } else {
+      $logData['title'] = $value;
+    }
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->url);
