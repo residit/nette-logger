@@ -76,11 +76,6 @@ class NetteLoggerExtension extends CompilerExtension
       $builder->getDefinition($this->prefix($this->extensionPrefix))
         ->addSetup('setIdentity', [$builder->getDefinition('security.user')]);
     }
-
-    if ($builder->hasDefinition('session.session')) {
-      $builder->getDefinition($this->prefix($this->extensionPrefix))
-        ->addSetup('setSession', [$builder->getDefinition('session.session')]);
-    }
   }
 
   /**
