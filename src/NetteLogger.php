@@ -24,6 +24,11 @@ class NetteLogger extends Logger
   private $url;
 
   /**
+   * @var string $proxy
+   */
+  private $proxy;
+
+  /**
    * @var null $token
    */
   private $token = null;
@@ -36,6 +41,10 @@ class NetteLogger extends Logger
   public function setUrl(string $url)
   {
     $this->url = $url;
+  }
+
+  public function setProxy(string $proxy) {
+    $this->proxy = $proxy;
   }
 
   public function setToken(string $token)
@@ -92,6 +101,7 @@ class NetteLogger extends Logger
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->url);
+    curl_setopt($ch, CURLOPT_PROXY, $this->proxy);
     curl_setopt($ch, CURLOPT_POST, 1);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

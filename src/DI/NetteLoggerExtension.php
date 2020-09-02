@@ -21,10 +21,12 @@ class NetteLoggerExtension extends CompilerExtension
   private $enabled = false;
 
   private const PARAM_URL = 'url';
+  private const PARAM_PROXY = 'proxy';
   private const PARAM_TOKEN = 'token';
 
   private $defaults = [
     self::PARAM_URL => '',
+    self::PARAM_PROXY => '',
     self::PARAM_TOKEN => ''
   ];
 
@@ -50,6 +52,11 @@ class NetteLoggerExtension extends CompilerExtension
         'setUrl',
         [
           $this->config[self::PARAM_URL] ?? ''
+        ]
+      )->addSetup(
+        'setProxy',
+        [
+          $this->config[self::PARAM_PROXY] ?? ''
         ]
       )->addSetup(
         'setToken',
