@@ -29,6 +29,7 @@ extensions:
 
 netteLogger:
     url: https://api-url.com/api/v1
+    proxy: 192.168.0.100:1234 (optional)
     token: ae27a4b4821b13cad2a17a75d219853e
 ```
 
