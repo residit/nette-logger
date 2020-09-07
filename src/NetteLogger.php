@@ -73,12 +73,15 @@ class NetteLogger extends Logger
   {
     $response = parent::log($value, $priority);
     $userId = null;
+    $url = null;
 
     if ($this->identity) {
       $userId = $this->identity->getId();
     }
 
-    $url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . "{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
+    if (isset($_SERVER['REQUEST_URI']) && isset($_SERVER['HTTP_HOST'])) {
+      $url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . "{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
+    }
 
     $logData = array(
       'title' => null,
@@ -129,8 +132,6 @@ class NetteLogger extends Logger
     switch ($httpCode):
       case 401:
       case 201:
-        $response = Json::decode($response)->status;
-        $this->logStatusToConsole($response);
         break;
       default:
         $this->logStatusToConsole('Sending to API error, check API endpoint or url in config file!');
