@@ -90,7 +90,7 @@ class NetteLogger extends Logger
       'file' => null,
       'line' => null,
       'userId' => $userId,
-      'html' => null,
+      'html' => null
     ];
 
     if ($value instanceof \Throwable) {
