@@ -98,6 +98,9 @@ class NetteLogger extends Logger
       $logData['file'] = $value->getFile();
       $logData['line'] = $value->getLine();
       $logData['html'] = file_get_contents($response);
+    } elseif (is_array($value)) {
+      $logData['title'] = json_encode($value);
+      $logData['html'] = '<pre>' . var_export($value, true) . '</pre>';
     } else {
       $logData['title'] = $value;
     }
