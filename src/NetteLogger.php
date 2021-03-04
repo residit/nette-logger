@@ -83,7 +83,7 @@ class NetteLogger extends Logger
       $url = 'http' . (isset($_SERVER['HTTPS']) ? 's' : '') . '://' . "{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
     }
 
-    $logData = array(
+    $logData = [
       'title' => null,
       'type' => $priority,
       'url' => $url,
@@ -91,7 +91,7 @@ class NetteLogger extends Logger
       'line' => null,
       'userId' => $userId,
       'html' => null,
-    );
+    ];
 
     if ($value instanceof \Throwable) {
       $logData['title'] = $value->getMessage();
