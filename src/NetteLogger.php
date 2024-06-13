@@ -135,6 +135,7 @@ class NetteLogger extends Logger
     switch ($httpCode):
       case 401:
       case 201:
+      case 200:
         break;
       default:
         $this->logStatusToConsole('Sending to API error, check API endpoint or url in config file!');
