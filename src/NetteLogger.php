@@ -89,14 +89,17 @@ class NetteLogger extends Logger
       'url' => $url,
       'file' => null,
       'line' => null,
+      'hash' => null,
       'userId' => $userId,
       'html' => null,
     ];
 
     if ($value instanceof \Throwable) {
+      $hash = $this->extractHash($response);
       $logData['title'] = $value->getMessage();
       $logData['file'] = $value->getFile();
       $logData['line'] = $value->getLine();
+      $logData['hash'] = $hash;
       $logData['html'] = file_get_contents($response);
     } elseif (is_array($value)) {
       $logData['title'] = json_encode($value);
@@ -145,5 +148,22 @@ class NetteLogger extends Logger
   public function logStatusToConsole($text)
   {
     echo("<script>console.log('%cNette Logger:', 'background: #d50000; color: #fff;', ' " . $text . "')</script>");
+  }
+
+  /**
+   * extract hash
+   *
+   * @param string $string
+   * @return string|null
+   */
+  protected function extractHash(string $string): ?string
+  {
+    $pattern = '/--\d{4}-\d{2}-\d{2}--\d{2}-\d{2}--([a-zA-Z0-9]+)\./';
+    
+    if (preg_match($pattern, $string, $matches)) {
+        return $matches[1];
+    }
+    
+    return null;
   }
 }
