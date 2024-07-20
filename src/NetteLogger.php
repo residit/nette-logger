@@ -8,6 +8,7 @@ use Nette\Security\Identity;
 use Nette\Security\User;
 use Nette\Utils\Json;
 use Tracy\Debugger;
+use Tracy\Dumper;
 use Tracy\ILogger;
 use Tracy\Logger;
 
@@ -101,9 +102,19 @@ class NetteLogger extends Logger
       $logData['line'] = $value->getLine();
       $logData['hash'] = $hash;
       $logData['html'] = file_get_contents($response);
-    } elseif (is_array($value)) {
-      $logData['title'] = json_encode($value);
-      $logData['html'] = '<pre>' . var_export($value, true) . '</pre>';
+    } elseif (is_array($value) || is_object($value)) {
+      $options = [
+        Dumper::THEME => "dark",
+        Dumper::COLLAPSE => false,
+        Dumper::KEYS_TO_HIDE => ['password', 'secret', 'token', 'container', 'connection', 'database', 'db', 'linkGenerator']
+      ];
+      
+      if(is_array($value)) {
+        $logData['title'] = "Array log";
+      } else {
+        $logData['title'] = "Object log - " . get_class($value);
+      }
+      $logData['html'] = Dumper::toHtml($value, $options);
     } else {
       $logData['title'] = $value;
     }
