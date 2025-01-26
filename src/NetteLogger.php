@@ -128,7 +128,7 @@ class NetteLogger extends Logger
     curl_setopt($ch, CURLOPT_TIMEOUT, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Auth-Token: ' . $this->token]);
 
-    curl_exec($ch); // Spustí požadavek a nečeká na odpověď
+    curl_exec($ch);
     curl_close($ch);
 
     //$this->checkResponse($responseHttpCode, $response);
