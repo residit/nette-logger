@@ -124,14 +124,16 @@ class NetteLogger extends Logger
     curl_setopt($ch, CURLOPT_PROXY, $this->proxy);
     curl_setopt($ch, CURLOPT_POST, 1);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    //curl_setopt($ch, CURLOPT_TIMEOUT, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Auth-Token: ' . $this->token]);
 
-    curl_exec($ch);
+    $response = curl_exec($ch);
+    $responseHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
     curl_close($ch);
 
-    //$this->checkResponse($responseHttpCode, $response);
+    $this->checkResponse($responseHttpCode, $response);
 
     return $response;
   }
