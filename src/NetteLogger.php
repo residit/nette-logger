@@ -118,7 +118,7 @@ class NetteLogger extends Logger
     } else {
       $logData['title'] = $value;
     }
-z
+    
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->url);
     curl_setopt($ch, CURLOPT_PROXY, $this->proxy);
