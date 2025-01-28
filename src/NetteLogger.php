@@ -118,48 +118,22 @@ class NetteLogger extends Logger
     } else {
       $logData['title'] = $value;
     }
-
+z
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->url);
     curl_setopt($ch, CURLOPT_PROXY, $this->proxy);
     curl_setopt($ch, CURLOPT_POST, 1);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $logData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    //curl_setopt($ch, CURLOPT_TIMEOUT, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Auth-Token: ' . $this->token]);
 
-    $response = curl_exec($ch);
-    $responseHttpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 300);
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 400);
 
+    curl_exec($ch);
     curl_close($ch);
 
-    $this->checkResponse($responseHttpCode, $response);
-
     return $response;
-  }
-
-  /**
-   * Handle response states
-   *
-   * @param $httpCode
-   * @param $response
-   * @throws \Nette\Utils\JsonException
-   */
-  public function checkResponse($httpCode, $response)
-  {
-    switch ($httpCode):
-      case 401:
-      case 201:
-      case 200:
-        break;
-      default:
-        $this->logStatusToConsole('Sending to API error, check API endpoint or url in config file!');
-    endswitch;
-  }
-
-  public function logStatusToConsole($text)
-  {
-    echo("<script>console.log('%cNette Logger:', 'background: #d50000; color: #fff;', ' " . $text . "')</script>");
   }
 
   /**
