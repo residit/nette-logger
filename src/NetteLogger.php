@@ -20,6 +20,12 @@ class NetteLogger extends Logger
   private $identity;
 
   /**
+   * @var User|null $user  Lazily resolved at log() time to avoid starting the
+   * session / caching the auth state during DI container initialization.
+   */
+  private $user = null;
+
+  /**
    * @var string $url
    */
   private $url;
@@ -36,7 +42,13 @@ class NetteLogger extends Logger
 
   public function setIdentity(User $user)
   {
-    $this->identity = $user->getIdentity();
+    // Store the User reference only. Do NOT resolve the identity here: this
+    // setter runs during DI container initialize() (Tracy::setLogger), i.e.
+    // before presenters set their session namespace. Calling getIdentity()
+    // here would start the session and cache the auth state under the default
+    // namespace, breaking apps that use Nette\Security\User storage namespaces
+    // (e.g. $user->getStorage()->setNamespace('app')).
+    $this->user = $user;
   }
 
   public function setUrl(string $url)
@@ -76,8 +88,11 @@ class NetteLogger extends Logger
     $userId = null;
     $url = null;
 
-    if ($this->identity) {
-      $userId = $this->identity->getId();
+    // Resolve identity lazily, at log time, when the correct session namespace
+    // is already in effect. Falls back to a directly-set identity if present.
+    $identity = $this->user ? $this->user->getIdentity() : $this->identity;
+    if ($identity) {
+      $userId = $identity->getId();
     }
 
     if (isset($_SERVER['REQUEST_URI']) && isset($_SERVER['HTTP_HOST'])) {
