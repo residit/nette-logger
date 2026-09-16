@@ -36,6 +36,39 @@ class NetteLogger extends Logger
   private $token = null;
 
   /**
+   * @var int $connectTimeout  Milliseconds allowed for establishing the connection.
+   */
+  private $connectTimeout = 1000;
+
+  /**
+   * @var int $timeout  Milliseconds allowed for the whole transfer.
+   */
+  private $timeout = 3000;
+
+  /**
+   * @var bool $finishRequest  Whether to hand the response to the client before
+   * waiting for the API. Turn off if something in the application still needs
+   * to write output from a shutdown function registered after the first log.
+   */
+  private $finishRequest = true;
+
+  /**
+   * @var resource|\CurlMultiHandle|null $multi  Shared multi handle; created on
+   * the first dispatch and torn down once the queue has drained.
+   */
+  private $multi = null;
+
+  /**
+   * @var array<int, resource|\CurlHandle> $transfers  In-flight easy handles.
+   */
+  private $transfers = [];
+
+  /**
+   * @var bool $flushScheduled
+   */
+  private $flushScheduled = false;
+
+  /**
    * Tracy\Logger::__construct() declares $directory without a default value.
    * Since nette/di 3.1 the container no longer autowires such built-in typed
    * parameters as null, so the service could not be instantiated at all.
@@ -71,6 +104,21 @@ class NetteLogger extends Logger
   public function setToken(string $token)
   {
     $this->token = $token;
+  }
+
+  /**
+   * Transfers no longer sit in front of the response, so the timeouts can be
+   * generous enough to actually deliver rather than tuned to stay invisible.
+   */
+  public function setTimeouts(int $connectTimeout, int $timeout)
+  {
+    $this->connectTimeout = $connectTimeout;
+    $this->timeout = $timeout;
+  }
+
+  public function setFinishRequest(bool $finishRequest)
+  {
+    $this->finishRequest = $finishRequest;
   }
 
   /**
@@ -159,8 +207,13 @@ class NetteLogger extends Logger
   }
 
   /**
-   * Send the prepared payload to the API. Only called once an API url is
-   * configured. Override to plug in a different transport.
+   * Hand the payload to cURL without waiting for the API.
+   *
+   * The transfer is started immediately -- so it travels while the application
+   * carries on -- but it is never waited on here. Anything still outstanding is
+   * collected in flush(), which runs after the response has reached the client.
+   * Only called once an API url is configured. Override to plug in a different
+   * transport.
    *
    * @param array<string, mixed> $logData
    */
@@ -176,11 +229,105 @@ class NetteLogger extends Logger
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['X-Auth-Token: ' . (string) $this->token]);
 
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, 300);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 400);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, $this->connectTimeout);
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, $this->timeout);
 
-    curl_exec($ch);
-    curl_close($ch);
+    if ($this->multi === null) {
+      $this->multi = curl_multi_init();
+    }
+
+    curl_multi_add_handle($this->multi, $ch);
+    $this->transfers[] = $ch;
+
+    // One non-blocking pump opens the connection and pushes what it can. It
+    // returns straight away -- the rest is finished in flush().
+    $active = 0;
+    do {
+      $status = curl_multi_exec($this->multi, $active);
+    } while ($status === CURLM_CALL_MULTI_PERFORM);
+
+    $this->scheduleFlush();
+  }
+
+  /**
+   * Arrange for the queue to be drained at the end of the request. Registering
+   * from inside a shutdown function is allowed, which matters because Tracy
+   * logs fatal errors from its own shutdown handler.
+   */
+  private function scheduleFlush(): void
+  {
+    if ($this->flushScheduled) {
+      return;
+    }
+
+    $this->flushScheduled = true;
+    register_shutdown_function([$this, 'flushOnShutdown']);
+  }
+
+  /**
+   * Release the response first, then wait for the API. Public only so it can be
+   * used as a shutdown callback.
+   *
+   * @internal
+   */
+  public function flushOnShutdown(): void
+  {
+    if ($this->finishRequest) {
+      if (function_exists('fastcgi_finish_request')) {
+        @fastcgi_finish_request();
+      } elseif (function_exists('litespeed_finish_request')) {
+        @litespeed_finish_request();
+      }
+    }
+
+    $this->flush();
+  }
+
+  /**
+   * Wait for every queued transfer to finish and release the handles. Safe to
+   * call repeatedly and safe to call with nothing queued.
+   */
+  public function flush(): void
+  {
+    // Cleared up front so a log() emitted later -- from another shutdown
+    // function, say -- schedules a fresh flush of its own.
+    $this->flushScheduled = false;
+
+    if ($this->multi === null) {
+      return;
+    }
+
+    if ($this->transfers) {
+      $active = 0;
+      do {
+        $status = curl_multi_exec($this->multi, $active);
+
+        if ($active) {
+          // curl_multi_select() returns -1 immediately when there is nothing to
+          // wait on; the short sleep keeps that from becoming a busy loop.
+          if (curl_multi_select($this->multi, 0.1) === -1) {
+            usleep(1000);
+          }
+        }
+      } while ($active && $status === CURLM_OK);
+    }
+
+    foreach ($this->transfers as $ch) {
+      curl_multi_remove_handle($this->multi, $ch);
+      curl_close($ch);
+    }
+
+    $this->transfers = [];
+    curl_multi_close($this->multi);
+    $this->multi = null;
+  }
+
+  /**
+   * Backstop for the case where the object goes away without a shutdown pass.
+   */
+  public function __destruct()
+  {
+    $this->flush();
   }
 
   /**

@@ -25,6 +25,9 @@ class NetteLoggerExtension extends CompilerExtension
   private const PARAM_URL = 'url';
   private const PARAM_PROXY = 'proxy';
   private const PARAM_TOKEN = 'token';
+  private const PARAM_CONNECT_TIMEOUT = 'connectTimeout';
+  private const PARAM_TIMEOUT = 'timeout';
+  private const PARAM_FINISH_REQUEST = 'finishRequest';
 
   /**
    * Config schema. Replaces the deprecated validateConfig() call, which is
@@ -36,6 +39,11 @@ class NetteLoggerExtension extends CompilerExtension
       self::PARAM_URL => Expect::string('')->dynamic(),
       self::PARAM_PROXY => Expect::string('')->dynamic(),
       self::PARAM_TOKEN => Expect::string('')->dynamic(),
+      // Transfers are collected after the response has been handed over, so
+      // these no longer trade delivery against request latency.
+      self::PARAM_CONNECT_TIMEOUT => Expect::int(1000)->min(1),
+      self::PARAM_TIMEOUT => Expect::int(3000)->min(1),
+      self::PARAM_FINISH_REQUEST => Expect::bool(true),
     ]);
   }
 
@@ -71,6 +79,17 @@ class NetteLoggerExtension extends CompilerExtension
         'setToken',
         [
           $config->{self::PARAM_TOKEN}
+        ]
+      )->addSetup(
+        'setTimeouts',
+        [
+          $config->{self::PARAM_CONNECT_TIMEOUT},
+          $config->{self::PARAM_TIMEOUT}
+        ]
+      )->addSetup(
+        'setFinishRequest',
+        [
+          $config->{self::PARAM_FINISH_REQUEST}
         ]
       );
   }

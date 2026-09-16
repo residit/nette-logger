@@ -36,7 +36,38 @@ netteLogger:
     url: https://api-url.com/api/v1
     proxy: 192.168.0.100:1234 (optional)
     token: ae27a4b4821b13cad2a17a75d219853e
+
+    # optional, milliseconds
+    connectTimeout: 1000
+    timeout: 3000
+
+    # optional, see below
+    finishRequest: true
 ```
+
+## How sending works
+
+Logging does not wait for the API. `log()` hands the payload to cURL and
+returns immediately, so the transfer travels while the application carries on.
+Anything still outstanding is collected once, at the end of the request, and
+several entries from the same request go out in parallel rather than one after
+another.
+
+Under PHP-FPM (and LiteSpeed) the response is released to the client before
+that wait happens, so the visitor never pays for it. That is what
+`finishRequest` controls. Set it to `false` if something in your application
+still needs to write output from a shutdown function registered after the first
+log call -- otherwise leave it on.
+
+Because the wait moved out of the request, the timeouts no longer have to be
+tuned to stay invisible; the defaults are far more generous than the 300/400 ms
+the logger used to run with, which means fewer entries are dropped. They still
+occupy a worker for up to `timeout` after the response, so lower them if you
+log heavily.
+
+One trade-off worth knowing: if the process dies without running its shutdown
+functions (a segfault or the memory limit, say), entries queued in that request
+are lost. Tracy's own file log is written before any of this and is unaffected.
 
 ## Tests
 
