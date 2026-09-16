@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} (${{ matrix.dependencies }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        dependencies: [highest]
+        include:
+          # The declared floor (Tracy ^2.8, nette/* ^3.0) is only meaningful if
+          # something actually runs against it, and those releases predate PHP 8,
+          # so the lowest set is exercised on the oldest supported runtime.
+          - php: '7.2'
+            dependencies: lowest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate
+
+      - name: Install dependencies (highest)
+        if: matrix.dependencies == 'highest'
+        run: composer update --no-interaction --no-progress --prefer-dist
+
+      - name: Install dependencies (lowest)
+        if: matrix.dependencies == 'lowest'
+        run: composer update --no-interaction --no-progress --prefer-dist --prefer-lowest --prefer-stable
+
+      - name: Show resolved versions
+        run: composer show --direct
+
+      - name: Run tests
+        run: php tests/run-tests.php
+
+  compatibility:
+    name: PHP compatibility (7.2+)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      # Installed outside the project so the library's own composer.json is not
+      # touched by the linting tools.
+      - name: Install PHPCompatibility
+        run: |
+          mkdir -p "$RUNNER_TEMP/phpcs"
+          cd "$RUNNER_TEMP/phpcs"
+          composer require --no-interaction --no-progress \
+            squizlabs/php_codesniffer:^3.7 \
+            phpcompatibility/php-compatibility:^9.3
+          vendor/bin/phpcs --config-set installed_paths "$RUNNER_TEMP/phpcs/vendor/phpcompatibility/php-compatibility"
+
+      - name: Check sources against PHP 7.2 and up
+        run: |
+          "$RUNNER_TEMP/phpcs/vendor/bin/phpcs" -p src tests \
+            --standard=PHPCompatibility \
+            --runtime-set testVersion 7.2- \
+            --extensions=php

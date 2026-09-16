@@ -38,6 +38,17 @@ netteLogger:
     token: ae27a4b4821b13cad2a17a75d219853e
 ```
 
+## Tests
+
+```
+composer install
+php tests/run-tests.php
+```
+
+The suite is dependency-free on purpose: the supported range spans PHP 7.2 to
+8.4 and no single PHPUnit major covers it. CI runs it on every supported PHP
+version, and additionally against the lowest allowed dependency versions.
+
 ## Usage
 
 Once enabled as extension, you can continue to throw exceptions without any change. If you do not fill configuration, plugin will stay off.

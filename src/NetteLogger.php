@@ -151,23 +151,21 @@ class NetteLogger extends Logger
       $logData['title'] = $value;
     }
 
-    $this->send($logData);
+    if ($this->url !== '') {
+      $this->send($logData);
+    }
 
     return $response;
   }
 
   /**
-   * Send the prepared payload to the API. Failures must never break the
-   * application that is merely trying to log something.
+   * Send the prepared payload to the API. Only called once an API url is
+   * configured. Override to plug in a different transport.
    *
    * @param array<string, mixed> $logData
    */
-  private function send(array $logData): void
+  protected function send(array $logData): void
   {
-    if ($this->url === '') {
-      return;
-    }
-
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->url);
     if ($this->proxy !== '') {
