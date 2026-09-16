@@ -178,6 +178,85 @@ test('wires security.user when the application defines it', function () {
 
 echo "\nPayload\n";
 
+/**
+ * Starts PHP's built-in server on a free port with tests/server.php as the
+ * router, and returns [$baseUrl, $captureDir, $stop].
+ *
+ * @return array{0: string, 1: string, 2: callable}
+ */
+function startApiStub(string $key): array
+{
+  $captureDir = tempDir('api-' . $key);
+  foreach ((array) glob($captureDir . '/*.json') as $stale) {
+    unlink($stale);
+  }
+
+  $probe = @stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+  if (!$probe) {
+    throw new RuntimeException("could not reserve a port: $errstr");
+  }
+  $name = stream_socket_get_name($probe, false);
+  $port = (int) substr($name, strrpos($name, ':') + 1);
+  fclose($probe);
+
+  $descriptors = [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']];
+  $process = proc_open(
+    escapeshellarg(PHP_BINARY) . ' -S 127.0.0.1:' . $port . ' ' . escapeshellarg(__DIR__ . '/server.php'),
+    $descriptors,
+    $pipes,
+    __DIR__,
+    [
+      'NETTE_LOGGER_CAPTURE_DIR' => $captureDir,
+      'PATH' => getenv('PATH'),
+      // The built-in server is single-threaded unless this is set, which would
+      // serialise concurrent transfers and hide what the test is measuring.
+      'PHP_CLI_SERVER_WORKERS' => '4',
+    ]
+  );
+
+  if (!is_resource($process)) {
+    throw new RuntimeException('could not start the stub api');
+  }
+
+  $stop = function () use ($process, $pipes) {
+    foreach ($pipes as $pipe) {
+      if (is_resource($pipe)) {
+        fclose($pipe);
+      }
+    }
+    proc_terminate($process);
+    proc_close($process);
+  };
+
+  $deadline = microtime(true) + 10;
+  while (microtime(true) < $deadline) {
+    $conn = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+    if ($conn) {
+      fclose($conn);
+      return ['http://127.0.0.1:' . $port . '/', $captureDir, $stop];
+    }
+    usleep(50000);
+  }
+
+  $stop();
+  throw new RuntimeException('the stub api never came up on port ' . $port);
+}
+
+/**
+ * @return array<int, array<string, mixed>>
+ */
+function capturedRequests(string $captureDir): array
+{
+  $out = [];
+  foreach ((array) glob($captureDir . '/*.json') as $file) {
+    $decoded = json_decode((string) file_get_contents($file), true);
+    if (is_array($decoded)) {
+      $out[] = $decoded;
+    }
+  }
+  return $out;
+}
+
 function makeLogger(): CapturingLogger
 {
   $logger = new CapturingLogger();
@@ -273,6 +352,133 @@ test('url stays null outside an http request', function () {
   unset($_SERVER['HTTP_HOST'], $_SERVER['REQUEST_URI'], $_SERVER['HTTPS']);
   $logger->log('m', ILogger::INFO);
   assertSame(null, $logger->sent[0]['url'], 'url should be null on the command line');
+});
+
+echo "\nDispatch\n";
+
+test('payloads reach the api and carry the auth token', function () {
+  list($url, $captureDir, $stop) = startApiStub('delivery');
+
+  try {
+    $logger = new NetteLogger();
+    $logger->register();
+    $logger->setUrl($url);
+    $logger->setProxy('');
+    $logger->setToken('secret-token');
+    $logger->setFinishRequest(false);
+
+    $logger->log('first', ILogger::INFO);
+    $logger->log('second', ILogger::WARNING);
+    $logger->flush();
+
+    $requests = capturedRequests($captureDir);
+    assertSame(2, count($requests), 'wrong number of requests delivered');
+
+    $titles = [];
+    foreach ($requests as $request) {
+      assertSame('secret-token', $request['token'], 'auth token missing or wrong');
+      assertSame('POST', $request['method'], 'wrong http method');
+      $titles[] = $request['post']['title'];
+    }
+    sort($titles);
+    assertSame(['first', 'second'], $titles, 'wrong payloads delivered');
+  } finally {
+    $stop();
+  }
+});
+
+// The point of the whole exercise: log() hands the transfer to cURL and returns,
+// and the waiting happens in flush(), after the response is already gone.
+test('log() returns without waiting for a slow api', function () {
+  list($url, $captureDir, $stop) = startApiStub('slow');
+
+  try {
+    $logger = new NetteLogger();
+    $logger->register();
+    $logger->setUrl($url . '?delay=1000');
+    $logger->setProxy('');
+    $logger->setToken('t');
+    $logger->setTimeouts(2000, 5000);
+    $logger->setFinishRequest(false);
+
+    $started = microtime(true);
+    $logger->log('slow one', ILogger::INFO);
+    $logCost = microtime(true) - $started;
+
+    $started = microtime(true);
+    $logger->flush();
+    $flushCost = microtime(true) - $started;
+
+    assertTrue($logCost < 0.3, sprintf('log() blocked for %.0f ms', $logCost * 1000));
+    assertTrue($flushCost > 0.5, sprintf('flush() did not wait (%.0f ms), so nothing was deferred', $flushCost * 1000));
+    assertSame(1, count(capturedRequests($captureDir)), 'the deferred request never arrived');
+  } finally {
+    $stop();
+  }
+});
+
+test('several logs are dispatched concurrently, not one after another', function () {
+  list($url, $captureDir, $stop) = startApiStub('parallel');
+
+  try {
+    $logger = new NetteLogger();
+    $logger->register();
+    $logger->setUrl($url . '?delay=600');
+    $logger->setProxy('');
+    $logger->setToken('t');
+    $logger->setTimeouts(2000, 5000);
+    $logger->setFinishRequest(false);
+
+    for ($i = 0; $i < 3; $i++) {
+      $logger->log('entry ' . $i, ILogger::INFO);
+    }
+
+    $started = microtime(true);
+    $logger->flush();
+    $elapsed = microtime(true) - $started;
+
+    assertSame(3, count(capturedRequests($captureDir)), 'not every request arrived');
+
+    // The timing half of this only means anything where the stub can answer
+    // more than one request at a time. PHP_CLI_SERVER_WORKERS arrived in 7.4,
+    // so below that the built-in server serialises the replies itself and
+    // would report a slowdown that says nothing about the dispatcher.
+    if (PHP_VERSION_ID >= 70400 && DIRECTORY_SEPARATOR === '/') {
+      // Serially this would be ~1.8s; in parallel it stays near the cost of one.
+      assertTrue($elapsed < 1.5, sprintf('transfers appear to be serialised (%.0f ms)', $elapsed * 1000));
+    }
+  } finally {
+    $stop();
+  }
+});
+
+test('the queue is drained at shutdown without an explicit flush', function () use ($logDir) {
+  list($url, $captureDir, $stop) = startApiStub('shutdown');
+
+  try {
+    $command = escapeshellarg(PHP_BINARY)
+      . ' ' . escapeshellarg(__DIR__ . '/shutdown-case.php')
+      . ' ' . escapeshellarg(__DIR__ . '/../vendor/autoload.php')
+      . ' ' . escapeshellarg($logDir)
+      . ' ' . escapeshellarg($url);
+
+    $output = [];
+    $exitCode = 0;
+    exec($command . ' 2>&1', $output, $exitCode);
+
+    assertSame(0, $exitCode, 'the subprocess failed: ' . implode("\n", $output));
+    assertSame(1, count(capturedRequests($captureDir)), 'the shutdown hook never sent the payload');
+  } finally {
+    $stop();
+  }
+});
+
+test('flush() is safe with nothing queued and safe to repeat', function () {
+  $logger = new NetteLogger();
+  $logger->register();
+  $logger->flush();
+  $logger->flush();
+  assertTrue(true, 'unreachable');
 });
 
 echo "\n";
