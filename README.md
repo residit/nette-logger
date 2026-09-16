@@ -10,6 +10,11 @@ You can disable debug mode by inserting the lines below in file *app/bootstrap.p
 $configurator->setDebugMode(false);
 ```
 
+## Requirements
+
+- PHP 7.2+ (tested on PHP 8.4)
+- Tracy 2.8+, Nette DI / Security / HTTP 3.x
+
 ## Installation
 
 Install package via Composer:
@@ -32,6 +37,17 @@ netteLogger:
     proxy: 192.168.0.100:1234 (optional)
     token: ae27a4b4821b13cad2a17a75d219853e
 ```
+
+## Tests
+
+```
+composer install
+php tests/run-tests.php
+```
+
+The suite is dependency-free on purpose: the supported range spans PHP 7.2 to
+8.4 and no single PHPUnit major covers it. CI runs it on every supported PHP
+version, and additionally against the lowest allowed dependency versions.
 
 ## Usage
 

@@ -6,6 +6,8 @@ namespace Residit\NetteLogger\DI;
 
 use Nette\DI\CompilerExtension;
 use Nette\PhpGenerator\ClassType;
+use Nette\Schema\Expect;
+use Nette\Schema\Schema;
 use Residit\NetteLogger\NetteLogger;
 
 class NetteLoggerExtension extends CompilerExtension
@@ -24,20 +26,27 @@ class NetteLoggerExtension extends CompilerExtension
   private const PARAM_PROXY = 'proxy';
   private const PARAM_TOKEN = 'token';
 
-  private $defaults = [
-    self::PARAM_URL => '',
-    self::PARAM_PROXY => '',
-    self::PARAM_TOKEN => ''
-  ];
+  /**
+   * Config schema. Replaces the deprecated validateConfig() call, which is
+   * scheduled for removal in nette/di 4.0.
+   */
+  public function getConfigSchema(): Schema
+  {
+    return Expect::structure([
+      self::PARAM_URL => Expect::string('')->dynamic(),
+      self::PARAM_PROXY => Expect::string('')->dynamic(),
+      self::PARAM_TOKEN => Expect::string('')->dynamic(),
+    ]);
+  }
 
   /**
    * Load configuration of extension
    */
   public function loadConfiguration()
   {
-    $this->validateConfig($this->defaults);
+    $config = $this->config;
 
-    if (!($this->config[self::PARAM_URL] && $this->config[self::PARAM_TOKEN])) {
+    if (!($config->{self::PARAM_URL} && $config->{self::PARAM_TOKEN})) {
       return;
     }
 
@@ -51,17 +60,17 @@ class NetteLoggerExtension extends CompilerExtension
       )->addSetup(
         'setUrl',
         [
-          $this->config[self::PARAM_URL] ?? ''
+          $config->{self::PARAM_URL}
         ]
       )->addSetup(
         'setProxy',
         [
-          $this->config[self::PARAM_PROXY] ?? ''
+          $config->{self::PARAM_PROXY}
         ]
       )->addSetup(
         'setToken',
         [
-          $this->config[self::PARAM_TOKEN] ?? ''
+          $config->{self::PARAM_TOKEN}
         ]
       );
   }
