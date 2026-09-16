@@ -10,6 +10,11 @@ You can disable debug mode by inserting the lines below in file *app/bootstrap.p
 $configurator->setDebugMode(false);
 ```
 
+## Requirements
+
+- PHP 7.2+ (tested on PHP 8.4)
+- Tracy 2.8+, Nette DI / Security / HTTP 3.x
+
 ## Installation
 
 Install package via Composer:

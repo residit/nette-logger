@@ -14,15 +14,16 @@
   ],
   "type": "library",
   "require": {
-    "php": ">=7.1",
-    "tracy/tracy": "~2.4",
-    "nette/di": "^2.4 || ^3.0",
-    "nette/security": "^2.4 || ^3.0",
-    "nette/http": "^2.4 || ^3.0"
+    "php": ">=7.2",
+    "ext-curl": "*",
+    "tracy/tracy": "^2.8",
+    "nette/di": "^3.0",
+    "nette/security": "^3.0",
+    "nette/http": "^3.0"
   },
   "autoload": {
     "psr-4": {
-      "Residit\\NetteLogger\\": "/src"
+      "Residit\\NetteLogger\\": "src/"
     }
   }
 }
